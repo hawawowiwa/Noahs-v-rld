@@ -88,6 +88,7 @@ section{position:absolute;inset:0}
 .startrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .record{font-weight:700;color:var(--muted)}
 .record b{color:var(--ink);font-variant-numeric:tabular-nums}
+.ver{color:var(--muted);font-size:.78rem;font-weight:700;letter-spacing:.04em;margin-top:6px;font-variant-numeric:tabular-nums}
 .startcol{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 #topBtn{display:flex;align-items:center;gap:8px}
 .av{display:block;flex:none}
@@ -256,6 +257,7 @@ section{position:absolute;inset:0}
           </div>
           <button class="btn" id="topBtn"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="#ffc83a" stroke="#13223d" stroke-width="2" stroke-linejoin="round"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v4M8 20h8" fill="none" stroke="#13223d" stroke-width="2" stroke-linecap="round"/></svg>Topp 10</button>
         </div>
+        <div class="ver" id="ver"></div>
       </div>
     </section>
 
@@ -289,6 +291,7 @@ const FLAGS={"af":"<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http:
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
+const APP_VERSION='1.0';
 const COUNTS=[5,10,20,'all'];
 const REGIONS={
   europe:{name:'Europa',box:[[-25,34],[45,71]],scale:300},
@@ -707,6 +710,7 @@ document.addEventListener('click',e=>{if(e.target.closest('.chip,.btn,.pl,.an,.p
 // only the map may be pinch-zoomed, never the whole app
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{if(e.touches.length>1&&!e.target.closest('#map'))e.preventDefault()},{passive:false});
+$('ver').textContent='Version '+APP_VERSION;
 $('startBtn').onclick=startGame;
 $('topBtn').onclick=()=>{const k=recKey(),M=$('topModal');M.innerHTML=topHtml(k,getTop(k),-1,true);M.hidden=false;
   $('closeTop').onclick=()=>{M.hidden=true};$('closeTop').focus()};
