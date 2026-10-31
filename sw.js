@@ -1,5 +1,5 @@
 // Noah's värld – gör att spelet fungerar utan internet.
-const CACHE = 'noahs-varld-v1';
+const CACHE = 'noahs-varld-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png',
   'https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js'];
 self.addEventListener('install', e => {
