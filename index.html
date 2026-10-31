@@ -172,6 +172,9 @@ section{position:absolute;inset:0}
 .grat{fill:none;stroke:#fff;stroke-opacity:.18;stroke-width:1;vector-effect:non-scaling-stroke}
 .sphere{fill:var(--ocean)}
 #map .ctry.target{fill:var(--sun)!important;stroke:var(--ink)!important;stroke-width:2.5;vector-effect:non-scaling-stroke}
+.lbl{transition:opacity .2s}
+.lbl.gone{opacity:0}
+#map.capq .ring{fill-opacity:0}
 .ring{stroke:var(--ink);stroke-width:2.5;vector-effect:non-scaling-stroke;fill-opacity:.55;pointer-events:none}
 #map .ring.target{fill:var(--sun);fill-opacity:.9}
 .hard .ring{display:none}
@@ -380,7 +383,9 @@ function show(id){['menu','game','end'].forEach(s=>$(s).hidden=s!==id);$('app').
 
 /* ---------- map ---------- */
 const svg=d3.select('#map');let proj,path,zoomG,layerC,layerRing,layerHint,layerMarks,smallRings=[],W=0,H=0,K=1;
-const zoom=d3.zoom().scaleExtent([1,40]).clickDistance(8).on('zoom',e=>{zoomG.attr('transform',e.transform);K=e.transform.k;scaleMarks()});
+const zoom=d3.zoom().scaleExtent([1,1500]).clickDistance(8).on('zoom',e=>{zoomG.attr('transform',e.transform);K=e.transform.k;scaleMarks();labelFade()});
+// once the answer is shown, zooming further in hides the name so the map can be seen
+function labelFade(){if(!layerMarks)return;const hide=G&&G.phase==='result'&&G.revealK&&K>G.revealK*1.25;layerMarks.selectAll('.lbl').classed('gone',!!hide)}
 function buildMap(){
   const box=$('mapwrap').getBoundingClientRect();W=box.width;H=box.height;
   svg.attr('viewBox',[0,0,W,H]).classed('hard',G.hard);svg.selectAll('*').remove();
@@ -432,7 +437,8 @@ function placeLabel(d){
   let cands;
   if(d.kind==='capital')cands=[[tx,ty-19/K],[tx,ty+18/K+h],[tx+20/K+w/2,ty+h/3],[tx-20/K-w/2,ty+h/3]];
   else{const [[x0,y0],[x1,y1]]=d.box,cx=(x0+x1)/2,cy=(y0+y1)/2;
-    cands=[[cx,cy+h/3],[cx,y0-g],[cx,y1+h+g],[x1+g+w/2,cy+h/3],[x0-g-w/2,cy+h/3],[cx,y0-g-45/K],[cx,y1+h+g+45/K]]}
+    const roomy=(x1-x0)>w*1.5&&(y1-y0)>h*3;
+    cands=[...(roomy?[[cx,cy+h/3]]:[]),[cx,y0-g],[cx,y1+h+g],[x1+g+w/2,cy+h/3],[x0-g-w/2,cy+h/3],[cx,y0-g-45/K],[cx,y1+h+g+45/K]]}
   const hit=([x,y])=>{const r=[x-w/2-2/K,y-h,x+w/2+2/K,y+h*.3];return blocks.some(b=>r[0]<b[2]&&r[2]>b[0]&&r[1]<b[3]&&r[3]>b[1])};
   const best=cands.find(p=>!hit(p))||cands[1]||cands[0];
   el.attr('x',best[0]).attr('y',best[1]);
@@ -442,7 +448,7 @@ const START_K=1.6*1.6;
 const startView=()=>d3.zoomIdentity.translate(W/2*(1-START_K),H/2*(1-START_K)).scale(START_K);
 function zoomToCountry(id){
   const [[x0,y0],[x1,y1]]=path.bounds(largestPoly(byId[id])),pad=Math.min(W,H)*.18;
-  const k=Math.max(1,Math.min(16,(W-2*pad)/Math.max(x1-x0,1),(H-2*pad)/Math.max(y1-y0,1)));
+  const k=Math.max(1,Math.min(1200,(W-2*pad)/Math.max(x1-x0,1e-3),(H-2*pad)/Math.max(y1-y0,1e-3)));
   const t=d3.zoomIdentity.translate(W/2-k*(x0+x1)/2,H/2-k*(y0+y1)/2).scale(k);
   svg.transition().duration(reduce?0:800).call(zoom.transform,t);
 }
@@ -450,10 +456,10 @@ function zoomTo(points,bottomPad){
   const ps=points.map(p=>proj(p));const xs=ps.map(p=>p[0]),ys=ps.map(p=>p[1]);
   const pad=70,availH=H-bottomPad;
   let x0=Math.min(...xs)-pad,x1=Math.max(...xs)+pad,y0=Math.min(...ys)-pad,y1=Math.max(...ys)+pad;
-  const k=Math.max(1,Math.min(8,W/(x1-x0),availH/(y1-y0)));
+  const k=Math.max(1,Math.min(1200,W/(x1-x0),availH/(y1-y0)));
   const cx=(x0+x1)/2,cy=(y0+y1)/2;
   const t=d3.zoomIdentity.translate(W/2-k*cx,availH/2-k*cy).scale(k);
-  svg.transition().duration(reduce?0:800).call(zoom.transform,t);
+  svg.transition().duration(reduce?0:800).call(zoom.transform,t).on('end',()=>{if(G&&G.phase==='result'){G.revealK=K;labelFade()}});
 }
 $('zin').onclick=()=>svg.transition().duration(300).call(zoom.scaleBy,1.6);
 $('zout').onclick=()=>svg.transition().duration(300).call(zoom.scaleBy,1/1.6);
@@ -465,7 +471,7 @@ function cur(){return G.steps[G.i]}
 function nextStep(first){
   if(!first)G.i++;
   if(G.i>=G.steps.length)return finish();
-  G.phase='ask';G.hints=0;$('result').hidden=true;$('tap').hidden=false;
+  G.phase='ask';G.hints=0;G.revealK=null;$('result').hidden=true;$('tap').hidden=false;svg.classed('capq',G.steps[G.i].kind==='capital');
   layerMarks.selectAll('*').remove();layerHint.selectAll('*').remove();markTarget(null);
   const s=cur();
   // in "both" mode keep the country highlighted while guessing its capital
@@ -498,11 +504,13 @@ function distToCountry(ll,f){
   f.geometry.coordinates.forEach(p=>p.forEach(r=>r.forEach(c=>{const d=d3.geoDistance(ll,c);if(d<best){best=d;bp=c}})));
   return{km:best*R_EARTH,pt:bp};
 }
-function scoreFor(km,kind){
-  const sc=REGIONS[G.region].scale*(kind==='capital'?.6:1);
-  if(kind==='capital'&&km<=25)return 1000;
-  if(km===0)return 1000;
-  return Math.round(1000*Math.exp(-km/sc));
+const sizeKm=id=>Math.sqrt(d3.geoArea(byId[id])*R_EARTH*R_EARTH);
+function scoreFor(km,kind,c){
+  if(kind!=='capital'){if(km===0)return 1000;return Math.round(1000*Math.exp(-km/REGIONS[G.region].scale))}
+  // full points close to the capital; the circle is smaller for small countries
+  const size=sizeKm(c.id),tol=Math.min(25,Math.max(.3,size*.2)),sc=Math.min(REGIONS[G.region].scale*.6,Math.max(5,size*1.5));
+  if(km<=tol)return 1000;
+  return Math.round(1000*Math.exp(-(km-tol)/sc));
 }
 const MAXH=[1000,700,400];
 function guess(ll,inRing){
@@ -515,7 +523,8 @@ function guess(ll,inRing){
     hit=km===0||(km<=SMALL_TOL_KM&&!!ringFor(c.id));
   }else{pt=[c.lon,c.lat];km=d3.geoDistance(ll,pt)*R_EARTH}
   const maxP=G.mode==='capital'?MAXH[G.hints]:1000;
-  const pts=hit?1000:Math.round(scoreFor(km,s.kind)*maxP/1000);
+  const raw=hit?1000:scoreFor(km,s.kind,c);G.raw=raw;
+  const pts=Math.round(raw*maxP/1000);
   G.total+=pts;G.log.push({c,kind:s.kind,km,pts});G.last={ll,pt,km,pts,hit};
   revealOnMap(ll,pt,km,s);showResult(km,pts,s,hit);updateHud();
   sfx.drop();setTimeout(()=>{if(pts>=1000)sfx.fanfare();else if(pts>500)sfx.near()},260);
@@ -542,15 +551,15 @@ function largestPoly(f){let best=null,ba=-1;f.geometry.coordinates.forEach(p=>{c
 function labelPoint(f){return d3.geoCentroid(largestPoly(f))}
 function starsSvg(n){const st=on=>`<svg viewBox="0 0 24 24"><path d="M12 2l3 6.6 7.2.8-5.4 4.9 1.5 7.1L12 17.8l-6.3 3.6 1.5-7.1L1.8 9.4 9 8.6z" fill="${on?'#ffc83a':'#e3ebf5'}" stroke="#13223d" stroke-width="1.8" stroke-linejoin="round"/></svg>`;return `<div class="stars" aria-label="${n} av 3 stjärnor">${st(n>0)+st(n>1)+st(n>2)}</div>`}
 const starN=p=>p>=800?3:p>=500?2:p>=200?1:0;
-function message(km,kind){
-  if(km===0||(kind==='capital'&&km<=25))return'Mitt i prick!';
-  if(km<150)return'Supernära!';if(km<500)return'Bra gissat!';if(km<1500)return'Inte så långt bort!';return'Nästa gång!'}
+function message(raw){
+  if(raw>=1000)return'Mitt i prick!';if(raw>=800)return'Supernära!';if(raw>=500)return'Bra gissat!';if(raw>=200)return'Inte så långt bort!';return'Nästa gång!'}
+const kmTxt=km=>km<10?(Math.round(km*10)/10).toLocaleString('sv-SE'):fmt(Math.round(km));
 function showResult(km,pts,s,hit){
   const c=s.c,R=$('result');const last=G.i===G.steps.length-1;
   const near=hit&&km>0;
   const ans=s.kind==='country'?(near?`Bara ${fmt(Math.round(km))} km bort. Nära nog för ett så litet land!`:km===0?`Du klickade i ${c.n}!`:`${c.n} är markerat i gult.`):`${c.c} är huvudstad i ${c.n}.`;
-  R.innerHTML=`<div class="km">${fmt(Math.round(km))}<small> km</small></div>
-    <div class="res-mid"><div class="res-msg">${near?'Räknas som träff!':message(km,s.kind)}</div><div class="res-ans">${ans}</div></div>
+  R.innerHTML=`<div class="km">${kmTxt(km)}<small> km</small></div>
+    <div class="res-mid"><div class="res-msg">${near?'Räknas som träff!':message(G.raw)}</div><div class="res-ans">${ans}</div></div>
     <img class="flag" src="${flagSrc(c.a2)}" alt="">
     <div class="res-pts">${starsSvg(starN(pts))}<span>+${fmt(pts)} p</span><button class="btn small go" id="nextBtn" style="font-size:1rem">${last?'Se resultat':'Nästa'}</button></div>`;
   R.hidden=false;$('nextBtn').onclick=()=>nextStep();$('nextBtn').focus({preventScroll:true});
@@ -656,7 +665,7 @@ function finish(){
     <div class="endbtns"><button class="btn go" id="again">Spela igen</button><button class="btn" id="back">Till menyn</button></div>
     <div id="endWho"></div>
     <div id="endTop">${topHtml(key,top,myRank)}</div>
-    <ul class="log stk">${G.log.map(r=>`<li><img src="${flagSrc(r.c.a2)}" alt=""><span class="nm">${r.kind==='capital'?r.c.c:r.c.n}<small>${r.kind==='capital'?'Huvudstad i '+r.c.n:'Land'}</small></span><span class="k">${fmt(Math.round(r.km))} km</span><span class="p">${fmt(r.pts)} p</span></li>`).join('')}</ul>`;
+    <ul class="log stk">${G.log.map(r=>`<li><img src="${flagSrc(r.c.a2)}" alt=""><span class="nm">${r.kind==='capital'?r.c.c:r.c.n}<small>${r.kind==='capital'?'Huvudstad i '+r.c.n:'Land'}</small></span><span class="k">${kmTxt(r.km)} km</span><span class="p">${fmt(r.pts)} p</span></li>`).join('')}</ul>`;
   renderWho();
   show('end');$('again').onclick=startGame;$('back').onclick=()=>show('menu');
   if(isRec||pct>=.75)confetti();
