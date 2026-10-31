@@ -417,7 +417,28 @@ const visibleRing=r=>Math.sqrt(r.a)*K<RING_R*2.5;
 function markTarget(id){layerC.selectAll('path').classed('target',f=>f.id===id);layerRing.selectAll('circle').classed('target',d=>d.id===id)}
 function scaleMarks(){layerRing&&layerRing.selectAll('circle').attr('r',RING_R/K).attr('display',d=>visibleRing(d)?null:'none');
   layerMarks&&layerMarks.selectAll('.mk').attr('transform',function(){const d=d3.select(this).datum();return `translate(${d[0]},${d[1]}) scale(${1/K})`});
-  layerMarks&&layerMarks.selectAll('.lbl').attr('font-size',15/K).attr('stroke-width',4/K)}
+  layerMarks&&layerMarks.selectAll('.lbl').each(placeLabel)}
+// put the name where it does not cover the pin or the right answer
+function placeLabel(d){
+  const el=d3.select(this),fs=15/K,g=6/K;el.attr('font-size',fs).attr('stroke-width',4/K).attr('text-anchor','middle');
+  const w=(this.getComputedTextLength?this.getComputedTextLength():fs*8)||fs*8,h=fs;
+  const [px,py]=d.pin,[tx,ty]=d.tgt;
+  const blocks=[[px-15/K,py-40/K,px+15/K,py+3/K]];
+  if(d.showTgt)blocks.push([tx-17/K,ty-17/K,tx+17/K,ty+15/K]);
+  let cands;
+  if(d.kind==='capital')cands=[[tx,ty-19/K],[tx,ty+18/K+h],[tx+20/K+w/2,ty+h/3],[tx-20/K-w/2,ty+h/3]];
+  else{const [[x0,y0],[x1,y1]]=d.box,cx=(x0+x1)/2,cy=(y0+y1)/2;
+    cands=[[cx,cy+h/3],[cx,y0-g],[cx,y1+h+g],[x1+g+w/2,cy+h/3],[x0-g-w/2,cy+h/3],[cx,y0-g-45/K],[cx,y1+h+g+45/K]]}
+  const hit=([x,y])=>{const r=[x-w/2-2/K,y-h,x+w/2+2/K,y+h*.3];return blocks.some(b=>r[0]<b[2]&&r[2]>b[0]&&r[1]<b[3]&&r[3]>b[1])};
+  const best=cands.find(p=>!hit(p))||cands[1]||cands[0];
+  el.attr('x',best[0]).attr('y',best[1]);
+}
+function zoomToCountry(id){
+  const [[x0,y0],[x1,y1]]=path.bounds(largestPoly(byId[id])),pad=Math.min(W,H)*.18;
+  const k=Math.max(1,Math.min(16,(W-2*pad)/Math.max(x1-x0,1),(H-2*pad)/Math.max(y1-y0,1)));
+  const t=d3.zoomIdentity.translate(W/2-k*(x0+x1)/2,H/2-k*(y0+y1)/2).scale(k);
+  svg.transition().duration(reduce?0:800).call(zoom.transform,t);
+}
 function zoomTo(points,bottomPad){
   const ps=points.map(p=>proj(p));const xs=ps.map(p=>p[0]),ys=ps.map(p=>p[1]);
   const pad=70,availH=H-bottomPad;
@@ -441,8 +462,8 @@ function nextStep(first){
   layerMarks.selectAll('*').remove();layerHint.selectAll('*').remove();markTarget(null);
   const s=cur();
   // in "both" mode keep the country highlighted while guessing its capital
-  if(G.mode==='both'&&s.kind==='capital')markTarget(s.c.id);
-  svg.transition().duration(reduce?0:500).call(zoom.transform,d3.zoomIdentity);
+  if(G.mode==='both'&&s.kind==='capital'){markTarget(s.c.id);zoomToCountry(s.c.id)}
+  else svg.transition().duration(reduce?0:500).call(zoom.transform,d3.zoomIdentity);
   renderAsk();updateHud();
 }
 function renderAsk(){
@@ -502,8 +523,8 @@ function revealOnMap(ll,pt,km,s){
   const tgt=L.append('g').attr('class','mk').datum(proj(pt));
   if(s.kind==='capital'){tgt.append('path').attr('d','M0 -15l4.4 9 9.9 1.4-7.2 7 1.7 9.8L0 7.6l-8.8 4.6 1.7-9.8-7.2-7 9.9-1.4z').attr('fill','#ffc83a').attr('stroke','#13223d').attr('stroke-width',2.5).attr('stroke-linejoin','round')}
   else if(km>0){tgt.append('circle').attr('r',7).attr('fill','#fff').attr('stroke','#13223d').attr('stroke-width',3)}
-  const lp=proj(s.kind==='capital'?pt:labelPoint(byId[c.id]));
-  L.append('text').attr('class','lbl').attr('x',lp[0]).attr('y',lp[1]-(s.kind==='capital'?18/K:0)).attr('text-anchor','middle').text(s.kind==='capital'?c.c:c.n);
+  const box=s.kind==='country'?path.bounds(largestPoly(byId[c.id])):null;
+  L.append('text').attr('class','lbl').datum({kind:s.kind,pin:proj(ll),tgt:proj(pt),box,showTgt:s.kind==='capital'||km>0}).text(s.kind==='capital'?c.c:c.n);
   scaleMarks();
   const resH=Math.min(170,H*.45);
   const pts=[ll,pt];if(s.kind==='country'){const b=d3.geoBounds(largestPoly(byId[c.id]));pts.push(b[0],b[1])}
@@ -529,7 +550,7 @@ function showResult(km,pts,s,hit){
 }
 function redrawState(){
   const s=cur();if(!s)return;
-  if(G.mode==='both'&&s.kind==='capital')markTarget(s.c.id);
+  if(G.mode==='both'&&s.kind==='capital'){markTarget(s.c.id);if(G.phase==='ask')zoomToCountry(s.c.id)}
   if(G.phase==='ask'&&G.hints>=2)showHintCountry();
   if(G.phase==='result'&&G.last)revealOnMap(G.last.ll,G.last.pt,G.last.km,s);
 }
@@ -593,7 +614,9 @@ function renderWho(){
 }
 
 /* ---------- top 10 ---------- */
-function getAll(key){let l=store.get('res-'+key,null);if(Array.isArray(l))return l;
+function getAll(key){let l=store.get('res-'+key,null);
+  // remove the nameless copy that an earlier version saved next to the first result
+  if(Array.isArray(l))return l.filter(e=>e.d||e.pid||!l.some(o=>o!==e&&o.p===e.p&&o.pid));
   l=store.get('top-'+key,null);if(!Array.isArray(l)){const r=store.get('rec-'+key,0);l=r?[{p:r,d:0}]:[]}return l}
 const sortRes=l=>l.sort((a,b)=>b.p-a.p||a.d-b.d);
 function getTop(key){return sortRes(getAll(key)).slice(0,10)}
@@ -610,9 +633,10 @@ function topHtml(key,top,me,modal){
 /* ---------- end ---------- */
 function finish(){
   G.phase='done';const max=G.steps.length*1000;const key=`${G.region}-${G.mode}-${G.hard?'h':'e'}-${G.count}`;
+  const prior=getAll(key);
   const prev=store.get('rec-'+key,0),isRec=G.total>prev;if(isRec)store.set('rec-'+key,G.total);
   const P=curPlayer(),entry={p:G.total,d:Date.now(),pid:P&&P.id,n:P&&P.name,a:P&&P.a};
-  const all=sortRes(getAll(key).concat(entry)).slice(0,300);store.set('res-'+key,all);
+  const all=sortRes(prior.concat(entry)).slice(0,300);store.set('res-'+key,all);
   G.key=key;G.all=all;G.entry=entry;const top=all.slice(0,10),myRank=top.indexOf(entry);
   const pct=G.total/max;const title=pct>=.8?'Världsmästare!':pct>=.55?'Riktig upptäcktsresande!':pct>=.3?'Bra resa!':'Bra kämpat!';
   $('endIn').innerHTML=`<div class="end-card stk">
